@@ -114,6 +114,14 @@ class LogStash::Filters::Location < LogStash::Filters::Base
   
   CLIENT_FULLNAME="client_fullname"
   PRODUCT_NAME="product_name"
+  # NMSP
+  NMSP_AP_MAC="ap_mac"
+  NMSP_RSSI="rssi"
+  NMSP_DOT11STATUS="dot11_status"
+  NMSP_VLAN_ID="vlan_id"
+  NMSP_DOT11PROTOCOL="dot11_protocol"
+  NMSP_WIRELESS_ID="wireless_id"
+
   # #LOC
   LOC_TIMESTAMP_MILLIS="timestampMillis"
   SSID="ssid"
@@ -212,10 +220,9 @@ class LogStash::Filters::Location < LogStash::Filters::Base
   end
 
   def locv89(event)
-    puts "Init locv89"
+    generatedEvents = []
     namespace_id = (event.get(NAMESPACE_UUID)) ? event.get(NAMESPACE_UUID) : ""
     mseEventContent = event.get(LOC_STREAMING_NOTIFICATION)
-    puts mseEventContent
     if (mseEventContent)
       location = mseEventContent[LOC_LOCATION]
       toCache = {}
@@ -295,31 +302,88 @@ class LogStash::Filters::Location < LogStash::Filters::Base
       flowsNumber = Hash.new if flowsNumber.nil?
       toDruid["flows_count"] = flowsNumber[datasource] if flowsNumber[datasource] 
 
-      puts "toDruid is: "
-      puts toDruid 
       #clean the event
-      event.to_hash.each{|k,v| event.remove(k) }
-      toDruid.each {|k,v| event.set(k,v)}
+      enrichmentEvent = LogStash::Event.new
+      #event.to_hash.each{|k,v| event.remove(k) }
+      toDruid.each {|k,v| enrichmentEvent.set(k,v)}
+      generatedEvents.push(enrichmentEvent)
+      return generatedEvents
     end
   end
 
-  def locv10(event)
+  def locv10(event) 
+    messages = event.get("notifications")
+    generatedEvents = []
+    if messages
+      messages.each do |msg|
+        toCache = {}
+        toDruid = {}
+        
+        clientMac = String(msg[LOC_DEVICEID])
+        namespace_id = msg[NAMESPACE_UUID] ? msg[NAMESPACE_UUID] : ""
 
+        toCache[WIRELESS_ID] = msg[LOC_SSID] if msg[LOC_SSID]
+        toCache[NMSP_DOT11PROTOCOL] = msg[LOC_BAND] if msg[LOC_BAND]
+        toCache[DOT11STATUS] = msg[LOC_STATUS].to_i if msg[LOC_STATUS]
+        toCache[WIRELESS_STATION] = msg[LOC_AP_MACADDR] if msg[LOC_AP_MACADDR]
+        toCache[CLIENT_ID] = msg[LOC_USERNAME] if msg[LOC_USERNAME]
+  
+        toDruid.merge!(toCache)
+        
+        toDruid[SENSOR_NAME] = msg[LOC_SUBSCRIPTION_NAME]
+        toDruid[CLIENT_MAC] = clientMac
+        toDruid[TIMESTAMP] = msg[TIMESTAMP].to_i / 1000
+        toDruid[TYPE] = "mse10-association"
+        toDruid[LOC_SUBSCRIPTION_NAME] = msg[LOC_SUBSCRIPTION_NAME]
+        
+        toDruid[MARKET] = msg[MARKET] if msg[MARKET]
+        toDruid[MARKET_UUID] = msg[MARKET_UUID] if msg[MARKET]
+        toDruid[ORGANIZATION] = msg[ORGANIZATION] if msg[ORGANIZATION]
+        toDruid[ORGANIZATION_UUID] = msg[ORGANIZATION_UUID] if msg[ORGANIZATION_UUID]
+        toDruid[DEPLOYMENT] = msg[DEPLOYMENT] if msg[DEPLOYMENT]
+        todruid[DEPLOYMENT_UUID] = msg[DEPLOYMENT_UUID] if msg[DEPLOYMENT_UUID]
+        toDruid[SENSOR_NAME] = msg[SENSOR_NAME] if msg[SENSOR_NAME]
+        toDruid[SENSOR_UUID] = msg[SENSOR_UUID] if msg[SENSOR_UUID]
+        
+        @store[clientMac + namespace_id] = toCache
+        @memcached.set(LOCATION_STORE,@store)
+      
+        toDruid[CLIENT_PROFILE] = "hard"
+        
+        namespace = event.get(NAMESPACE_UUID)
+        datasource = (namespace) ? DATASOURCE + "_" + namespace : DATASOURCE
+
+        counterStore = @memcached.get(COUNTER_STORE)
+        counterStore = Hash.new if counterStore.nil?
+        counterStore[datasource] = counterStore[datasource].nil? ? 0 : (counterStore[datasource] + 1)
+        @memcached.set(COUNTER_STORE,counterStore)
+
+        flowsNumber = @memcached.get(FLOWS_NUMBER)
+        flowsNumber = Hash.new if flowsNumber.nil?
+        toDruid["flows_count"] = flowsNumber[datasource] if flowsNumber[datasource]
+
+        #clean the event
+        enrichmentEvent = LogStash::Event.new
+        toDruid.each {|k,v| enrichmentEvent.set(k,v)}
+        generatedEvents.push(enrichmentEvent)
+      end
+    end
+    return generatedEvents
   end
 
   def filter(event)
-    puts "Event is: "
-    puts event
-    puts "Init filter"
-    enrichmentEvent = nil
+    generatedEvents = []
     if (event.get(LOC_STREAMING_NOTIFICATION))
-      locv89(event)
+      generatedEvents = locv89(event)
     elsif (event.get(LOC_NOTIFICATIONS))
-      locv10(event)
+      generatedEvents = locv10(event)
     else
       puts "WARN: Unknow location message: {#{event}}"
     end
-     
-    filter_matched(event)
+
+    generatedEvents.each do |e|
+      yield e
+    end
+    event.cancel
   end  # def filter
 end    # class Logstash::Filter::Location
