@@ -5,205 +5,205 @@ require "logstash/namespace"
 require "json"
 require "time"
 require "dalli"
+require "yaml"
+
 require_relative "util/constants/*"
-require_relative "store/storeManager"
+require_relative "util/postgresql_manager"
+require_relative "store/store_manager"
 
 class LogStash::Filters::Location < LogStash::Filters::Base
 
   config_name "location"
 
-  #config :path, :validate => :path, :default => " ", :required => false
+  config :database, :validate => :string, :default => "redborder", :required => false
+  config :user, :validate => :string, :default => "redborder", :required => false
+  config :pass, :validate => :string, :default => "", :required => false
+  config :port, :validate => :number, :default => "5432", :required => false
+  config :host, :validate => :path, :default => "postgresql.redborder.cluster", :required => false
   
-  # Constants.. 
-  # Custom
-  LOCATION_STORE="location"
+  # Custom constants: 
   DATASOURCE="rb_location"
-  COUNTER_STORE="counterStore"
-  FLOWS_NUMBER="flowsNumber"
-  # end of Constants
    
   public
-  def set_stores
-    @store = @memcached.get(LOCATION_STORE)
-    @store = Hash.new if @store.nil?
-  end
 
   def register
-    @store = {}
-    @dimToDruid = [MARKET, MARKET_UUID, ORGANIZATION, ORGANIZATION_UUID,
-            DEPLOYMENT, DEPLOYMENT_UUID, SENSOR_NAME, SENSOR_UUID, NAMESPACE, SERVICE_PROVIDER, SERVICE_PROVIDER_UUID]
-    options = {:expires_in => 0}
-    @memcached = Dalli::Client.new("localhost:11211", options)
-    set_stores
+    @dim_to_druid = [ MARKET, MARKET_UUID, ORGANIZATION, ORGANIZATION_UUID,
+                    DEPLOYMENT, DEPLOYMENT_UUID, SENSOR_NAME, SENSOR_UUID, 
+                    NAMESPACE, SERVICE_PROVIDER, SERVICE_PROVIDER_UUID ]
+    @memcached = Dalli::Client.new("localhost:11211", {:expires_in => 0})
+    @store = @memcached.get(LOCATION_STORE) || {}
+    @postgresql_manager = PostgresqlManager.new(@memcached,@database,@user,@pass,@port,@host)
+    @store_manager = StoreManager.new(@memcached)
   end
 
   def locv89(event)
-    generatedEvents = []
+    generated_events = []
     namespace_id = (event.get(NAMESPACE_UUID)) ? event.get(NAMESPACE_UUID) : ""
-    mseEventContent = event.get(LOC_STREAMING_NOTIFICATION)
-    if (mseEventContent)
-      location = mseEventContent[LOC_LOCATION]
-      toCache = {}
-      toDruid = {}
+    mse_event_content = event.get(LOC_STREAMING_NOTIFICATION)
+    if (mse_event_content)
+      location = mse_event_content[LOC_LOCATION]
+      to_cache = {}
+      to_druid = {}
       
       if (location) 
-        geoCoordinate = (location[LOC_GEOCOORDINATEv8]) ? location[LOC_GEOCOORDINATEv8] : location[LOC_GEOCOORDINATEv9]
-        mapInfo = (location[LOC_MAPINFOv8]) ? location[LOC_MAPINFOv8] : location[LOC_MAPINFOv9]
-        macAddress = String(location[LOC_MACADDR])
-        toDruid[CLIENT_MAC] = macAddress
-        mapHierarchy = String(mapInfo[LOC_MAP_HIERARCHY])
+        geo_coordinate = (location[LOC_GEOCOORDINATEv8]) ? location[LOC_GEOCOORDINATEv8] : location[LOC_GEOCOORDINATEv9]
+        map_info = (location[LOC_MAPINFOv8]) ? location[LOC_MAPINFOv8] : location[LOC_MAPINFOv9]
+        mac_address = String(location[LOC_MACADDR])
+        to_druid[CLIENT_MAC] = mac_address
+        map_hierarchy = String(map_info[LOC_MAP_HIERARCHY])
 
-        if mapHierarchy
-          zone = mapHierarchy.split(">")
-          toCache[CAMPUS]   = zone[0] if (zone.length >= 1)
-          toCache[BUILDING] = zone[1] if (zone.length >= 2)
-          toCache[FLOOR]    = zone[2] if (zone.length >= 3)
+        if map_hierarchy
+          zone = map_hierarchy.split(">")
+          to_cache[CAMPUS]   = zone[0] if (zone.length >= 1)
+          to_cache[BUILDING] = zone[1] if (zone.length >= 2)
+          to_cache[FLOOR]    = zone[2] if (zone.length >= 3)
         end
         
         state = String(location[LOC_DOT11STATUS])
         
         if state
-          toDruid[DOT11STATUS] = state
-          toCache[DOT11STATUS] = state
+          to_druid[DOT11STATUS] = state
+          to_cache[DOT11STATUS] = state
         end
 
         if state and state.eql?LOC_ASSOCIATED
           ip = location[LOC_IPADDR].to_a
-          toCache[WIRELESS_ID]      = location[LOC_SSID]       if location[LOC_SSID]
-          toCache[WIRELESS_STATION] = location[LOC_AP_MACADDR] if location[LOC_AP_MACADDR]
-          toDruid[LAN_IP] = ip.first if ip and ip.first
+          to_cache[WIRELESS_ID]      = location[LOC_SSID]       if location[LOC_SSID]
+          to_cache[WIRELESS_STATION] = location[LOC_AP_MACADDR] if location[LOC_AP_MACADDR]
+          to_druid[LAN_IP] = ip.first if ip and ip.first
         end
       end
       
-      if geoCoordinate
-        latitude = Float( (geoCoordinate[LOC_LATITUDEv8]) ? geoCoordinate[LOC_LATITUDEv8] : geoCoordinate[LOC_LATITUDEv9] )
-        latitude = Float ( (latitude * 100000 ).round / 100000 )
+      if geo_coordinate
+        latitude = Float((geo_coordinate[LOC_LATITUDEv8]) ? geo_coordinate[LOC_LATITUDEv8] : geo_coordinate[LOC_LATITUDEv9])
+        latitude = Float((latitude * 100000 ).round / 100000)
  
-        longitude = Float(geoCoordinate[LOC_LONGITUDE])
-        longitude = Float ( (longitude * 100000 ).round / 100000 )
+        longitude = Float(geo_coordinate[LOC_LONGITUDE])
+        longitude = Float((longitude * 100000 ).round / 100000)
 
         locationFormat = latitude.to_s + "," + longitude.to_s
-        toCache[CLIENT_LATLNG] = locationFormat 
+        to_cache[CLIENT_LATLNG] = locationFormat 
       end 
       
-      dateString = String(mseEventContent[TIMESTAMP]) 
-      sensorName = String(mseEventContent[LOC_SUBSCRIPTION_NAME])
+      dateString = String(mse_event_content[TIMESTAMP]) 
+      sensorName = String(mse_event_content[LOC_SUBSCRIPTION_NAME])
      
-      toDruid[SENSOR_NAME] = sensorName if sensorName
+      to_druid[SENSOR_NAME] = sensorName if sensorName
       
-      @dimToDruid.each { |dimension| toDruid[dimension] =  mseEventContent[dimension] if mseEventContent[dimension] }
-      @dimToDruid.each { |dimension| toDruid[dimension] =  event.get(dimension) if event.get(dimension) }
+      @dim_to_druid.each { |dimension| to_druid[dimension] =  mse_event_content[dimension] if mse_event_content[dimension] }
+      @dim_to_druid.each { |dimension| to_druid[dimension] =  event.get(dimension) if event.get(dimension) }
 
-      toDruid.merge!(toCache)
-      toDruid[CLIENT_RSSI] = "unknown"
-      toDruid[CLIENT_SNR] = "unknown"
-      toDruid[NAMESPACE_UUID] = namespace_id if !namespace_id.eql?"" 
-      toDruid[TYPE] = "mse" 
-      toDruid[TIMESTAMP] = (dateString) ? (Time.parse(dateString).to_i / 1000) : (Time.now.to_i / 1000)
+      to_druid.merge!(to_cache)
+      to_druid[CLIENT_RSSI] = "unknown"
+      to_druid[CLIENT_SNR] = "unknown"
+      to_druid[NAMESPACE_UUID] = namespace_id if !namespace_id.eql?"" 
+      to_druid[TYPE] = "mse" 
+      to_druid[TIMESTAMP] = (dateString) ? (Time.parse(dateString).to_i / 1000) : (Time.now.to_i / 1000)
 
-      if macAddress
-        @store[macAddress + namespace_id] = toCache
+      if mac_address
+        @store[mac_address + namespace_id] = to_cache
         @memcached.set(LOCATION_STORE,@store)
       end
       
-      toDruid[CLIENT_PROFILE] = "hard"
+      to_druid[CLIENT_PROFILE] = "hard"
 
-      storeEnrichment = StoreManager.enrich(toDruid)
+      store_enrichment = @store_manager.enrich(to_druid)
        
       namespace = event.get(NAMESPACE_UUID)
       datasource = (namespace) ? DATASOURCE + "_" + namespace : DATASOURCE
 
-      counterStore = @memcached.get(COUNTER_STORE)
-      counterStore = Hash.new if counterStore.nil?
-      counterStore[datasource] = counterStore[datasource].nil? ? 0 : (counterStore[datasource] + 1)
-      @memcached.set(COUNTER_STORE,counterStore)
+      counter_store = @memcached.get(COUNTER_STORE)
+      counter_store = Hash.new if counter_store.nil?
+      counter_store[datasource] = counter_store[datasource].nil? ? 0 : (counter_store[datasource] + 1)
+      @memcached.set(COUNTER_STORE,counter_store)
       
-      flowsNumber = @memcached.get(FLOWS_NUMBER)
-      flowsNumber = Hash.new if flowsNumber.nil?
-      toDruid["flows_count"] = flowsNumber[datasource] if flowsNumber[datasource] 
+      flows_number = @memcached.get(FLOWS_NUMBER)
+      flows_number = Hash.new if flows_number.nil?
+      to_druid["flows_count"] = flows_number[datasource] if flows_number[datasource] 
 
       #clean the event
       enrichmentEvent = LogStash::Event.new
       #event.to_hash.each{|k,v| event.remove(k) }
-      toDruid.each {|k,v| enrichmentEvent.set(k,v)}
-      generatedEvents.push(enrichmentEvent)
-      return generatedEvents
+      to_druid.each {|k,v| enrichmentEvent.set(k,v)}
+      generated_events.push(enrichmentEvent)
+      return generated_events
     end
   end
 
   def locv10(event) 
     messages = event.get("notifications")
-    generatedEvents = []
+    generated_events = []
     if messages
       messages.each do |msg|
-        toCache = {}
-        toDruid = {}
+        to_cache = {}
+        to_druid = {}
         
-        clientMac = String(msg[LOC_DEVICEID])
+        client_mac = String(msg[LOC_DEVICEID])
         namespace_id = msg[NAMESPACE_UUID] ? msg[NAMESPACE_UUID] : ""
 
-        toCache[WIRELESS_ID] = msg[LOC_SSID] if msg[LOC_SSID]
-        toCache[NMSP_DOT11PROTOCOL] = msg[LOC_BAND] if msg[LOC_BAND]
-        toCache[DOT11STATUS] = msg[LOC_STATUS].to_i if msg[LOC_STATUS]
-        toCache[WIRELESS_STATION] = msg[LOC_AP_MACADDR] if msg[LOC_AP_MACADDR]
-        toCache[CLIENT_ID] = msg[LOC_USERNAME] if msg[LOC_USERNAME]
+        to_cache[WIRELESS_ID] = msg[LOC_SSID] if msg[LOC_SSID]
+        to_cache[NMSP_DOT11PROTOCOL] = msg[LOC_BAND] if msg[LOC_BAND]
+        to_cache[DOT11STATUS] = msg[LOC_STATUS].to_i if msg[LOC_STATUS]
+        to_cache[WIRELESS_STATION] = msg[LOC_AP_MACADDR] if msg[LOC_AP_MACADDR]
+        to_cache[CLIENT_ID] = msg[LOC_USERNAME] if msg[LOC_USERNAME]
   
-        toDruid.merge!(toCache)
+        to_druid.merge!(to_cache)
         
-        toDruid[SENSOR_NAME] = msg[LOC_SUBSCRIPTION_NAME]
-        toDruid[CLIENT_MAC] = clientMac
-        toDruid[TIMESTAMP] = msg[TIMESTAMP].to_i / 1000
-        toDruid[TYPE] = "mse10-association"
-        toDruid[LOC_SUBSCRIPTION_NAME] = msg[LOC_SUBSCRIPTION_NAME]
+        to_druid[SENSOR_NAME] = msg[LOC_SUBSCRIPTION_NAME]
+        to_druid[CLIENT_MAC] = client_mac
+        to_druid[TIMESTAMP] = msg[TIMESTAMP].to_i / 1000
+        to_druid[TYPE] = "mse10-association"
+        to_druid[LOC_SUBSCRIPTION_NAME] = msg[LOC_SUBSCRIPTION_NAME]
         
-        toDruid[MARKET] = msg[MARKET] if msg[MARKET]
-        toDruid[MARKET_UUID] = msg[MARKET_UUID] if msg[MARKET]
-        toDruid[ORGANIZATION] = msg[ORGANIZATION] if msg[ORGANIZATION]
-        toDruid[ORGANIZATION_UUID] = msg[ORGANIZATION_UUID] if msg[ORGANIZATION_UUID]
-        toDruid[DEPLOYMENT] = msg[DEPLOYMENT] if msg[DEPLOYMENT]
-        todruid[DEPLOYMENT_UUID] = msg[DEPLOYMENT_UUID] if msg[DEPLOYMENT_UUID]
-        toDruid[SENSOR_NAME] = msg[SENSOR_NAME] if msg[SENSOR_NAME]
-        toDruid[SENSOR_UUID] = msg[SENSOR_UUID] if msg[SENSOR_UUID]
+        to_druid[MARKET] = msg[MARKET] if msg[MARKET]
+        to_druid[MARKET_UUID] = msg[MARKET_UUID] if msg[MARKET]
+        to_druid[ORGANIZATION] = msg[ORGANIZATION] if msg[ORGANIZATION]
+        to_druid[ORGANIZATION_UUID] = msg[ORGANIZATION_UUID] if msg[ORGANIZATION_UUID]
+        to_druid[DEPLOYMENT] = msg[DEPLOYMENT] if msg[DEPLOYMENT]
+        to_druid[DEPLOYMENT_UUID] = msg[DEPLOYMENT_UUID] if msg[DEPLOYMENT_UUID]
+        to_druid[SENSOR_NAME] = msg[SENSOR_NAME] if msg[SENSOR_NAME]
+        to_druid[SENSOR_UUID] = msg[SENSOR_UUID] if msg[SENSOR_UUID]
         
-        @store[clientMac + namespace_id] = toCache
+        @store[client_mac + namespace_id] = to_cache
         @memcached.set(LOCATION_STORE,@store)
       
-        toDruid[CLIENT_PROFILE] = "hard"
+        to_druid[CLIENT_PROFILE] = "hard"
        
-        storeEnrichment = StoreManager.enrich(toDruid)
+        store_enrichment = @store_manager.enrich(to_druid)
  
         namespace = event.get(NAMESPACE_UUID)
         datasource = (namespace) ? DATASOURCE + "_" + namespace : DATASOURCE
 
-        counterStore = @memcached.get(COUNTER_STORE)
-        counterStore = Hash.new if counterStore.nil?
-        counterStore[datasource] = counterStore[datasource].nil? ? 0 : (counterStore[datasource] + 1)
-        @memcached.set(COUNTER_STORE,counterStore)
+        counter_store = @memcached.get(COUNTER_STORE)
+        counter_store = Hash.new if counter_store.nil?
+        counter_store[datasource] = counter_store[datasource].nil? ? 0 : (counter_store[datasource] + 1)
+        @memcached.set(COUNTER_STORE,counter_store)
 
-        flowsNumber = @memcached.get(FLOWS_NUMBER)
-        flowsNumber = Hash.new if flowsNumber.nil?
-        toDruid["flows_count"] = flowsNumber[datasource] if flowsNumber[datasource]
+        flows_number = @memcached.get(FLOWS_NUMBER)
+        flows_number = Hash.new if flows_number.nil?
+        to_druid["flows_count"] = flows_number[datasource] if flows_number[datasource]
 
         #clean the event
         enrichmentEvent = LogStash::Event.new
-        toDruid.each {|k,v| enrichmentEvent.set(k,v)}
-        generatedEvents.push(enrichmentEvent)
+        to_druid.each {|k,v| enrichmentEvent.set(k,v)}
+        generated_events.push(enrichmentEvent)
       end
     end
-    return generatedEvents
+    return generated_events
   end
 
   def filter(event)
-    generatedEvents = []
+    @postgresql_manager.update
+    generated_events = []
     if (event.get(LOC_STREAMING_NOTIFICATION))
-      generatedEvents = locv89(event)
+      generated_events = locv89(event)
     elsif (event.get(LOC_NOTIFICATIONS))
-      generatedEvents = locv10(event)
+      generated_events = locv10(event)
     else
       puts "WARN: Unknow location message: {#{event}}"
     end
 
-    generatedEvents.each do |e|
+    generated_events.each do |e|
       yield e
     end
     event.cancel
