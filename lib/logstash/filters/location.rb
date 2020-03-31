@@ -27,9 +27,9 @@ class LogStash::Filters::Location < LogStash::Filters::Base
   public
 
   def register
-    @dim_to_druid = [ MARKET, MARKET_UUID, ORGANIZATION, ORGANIZATION_UUID,
+    @dim_to_druid = [MARKET, MARKET_UUID, ORGANIZATION, ORGANIZATION_UUID,
                     DEPLOYMENT, DEPLOYMENT_UUID, SENSOR_NAME, SENSOR_UUID, 
-                    NAMESPACE, SERVICE_PROVIDER, SERVICE_PROVIDER_UUID ]
+                    NAMESPACE, SERVICE_PROVIDER, SERVICE_PROVIDER_UUID]
     @memcached = Dalli::Client.new("localhost:11211", {:expires_in => 0})
     @store = @memcached.get(LOCATION_STORE) || {}
     @postgresql_manager = PostgresqlManager.new(@memcached,@database,@user,@pass,@port,@host)
@@ -66,11 +66,11 @@ class LogStash::Filters::Location < LogStash::Filters::Base
           to_cache[DOT11STATUS] = state
         end
 
-        if state and state.eql?LOC_ASSOCIATED
+        if state && state == LOC_ASSOCIATED
           ip = location[LOC_IPADDR].to_a
           to_cache[WIRELESS_ID]      = location[LOC_SSID]       if location[LOC_SSID]
           to_cache[WIRELESS_STATION] = location[LOC_AP_MACADDR] if location[LOC_AP_MACADDR]
-          to_druid[LAN_IP] = ip.first if ip and ip.first
+          to_druid[LAN_IP] = ip.first if ip && ip.first
         end
       end
       
@@ -96,7 +96,7 @@ class LogStash::Filters::Location < LogStash::Filters::Base
       to_druid.merge!(to_cache)
       to_druid[CLIENT_RSSI] = "unknown"
       to_druid[CLIENT_SNR] = "unknown"
-      to_druid[NAMESPACE_UUID] = namespace_id if !namespace_id.eql?"" 
+      to_druid[NAMESPACE_UUID] = namespace_id if !namespace_id == "" 
       to_druid[TYPE] = "mse" 
       to_druid[TIMESTAMP] = (dateString) ? (Time.parse(dateString).to_i / 1000) : (Time.now.to_i / 1000)
 

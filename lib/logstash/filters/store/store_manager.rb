@@ -9,14 +9,14 @@ class StoreManager
     self.memcached = memcached
   end 
   def get_store_keys(store_name)
-    return ["wireless_station"] if store_name.eql?WLC_PSQL_STORE
-    return ["sensor_uuid"] if store_name.eql?SENSOR_PSQL_STORE
+    return ["wireless_station"] if store_name == WLC_PSQL_STORE
+    return ["sensor_uuid"] if store_name == SENSOR_PSQL_STORE
     return ["client_mac","namespace_uuid"]
   end
   
   def must_overwrite?(store_name)
-   [ WLC_PSQL_STORE, SENSOR_PSQL_STORE, 
-     NMSP_STORE_MEASURE, NMSP_STORE_INFO ].include?store_name ? false : true
+   [WLC_PSQL_STORE, SENSOR_PSQL_STORE, 
+    NMSP_STORE_MEASURE, NMSP_STORE_INFO].include?store_name ? false : true
   end
 
   def get_store(store_name)
@@ -27,12 +27,12 @@ class StoreManager
     enrichment = {}
     enrichment.merge!(message)
 
-    stores_list = [ WLC_PSQL_STORE, SENSOR_PSQL_STORE, 
-                    NMSP_STORE_MEASURE,NMSP_STORE_INFO,
-                    RADIUS_STORE,LOCATION_STORE,DWELL_STORE ]
+    stores_list = [WLC_PSQL_STORE, SENSOR_PSQL_STORE, 
+                   NMSP_STORE_MEASURE,NMSP_STORE_INFO,
+                   RADIUS_STORE,LOCATION_STORE,DWELL_STORE]
 
     stores_list.each do |store_name|
-      if store_name.eql?SENSOR_PSQL_STORE or store_name.eql?WLC_PSQL_STORE
+      if store_name == SENSOR_PSQL_STORE || store_name == WLC_PSQL_STORE
         store_data = get_store(store_name)
         keys = get_store_keys(store_name)
         namespace = message[NAMESPACE_UUID]
@@ -42,8 +42,8 @@ class StoreManager
         
         if contents
            psql_namespace = contents[NAMESPACE_UUID]
-           if namespace and psql_namespace
-               if namespace.eql?psql_namespace
+           if namespace && psql_namespace
+               if namespace == psql_namespace
                  must_overwrite?(store_name) ? enrichment.merge!(contents) : enrichment = contents.merge(enrichment)
                end
            else

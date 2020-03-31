@@ -45,7 +45,7 @@ class PostgresqlManager
   end
 
   def update(force = false)
-    return if !need_update? and !force
+    return unless need_update? || force
     self.wlc_sql_store = self.memcached.get(WLC_PSQL_STORE) || {}
     self.store_sensor_sql = self.memcached.get(SENSOR_PSQL_STORE) || {}
     self.stores_to_update.each { |store_name| update_store(store_name) }
@@ -57,8 +57,8 @@ class PostgresqlManager
   end
 
   def save_store(store_name)
-    return self.memcached.set(WLC_PSQL_STORE,self.wlc_sql_store) if store_name.eql?WLC_PSQL_STORE
-    return self.memcached.set(SENSOR_PSQL_STORE, self.store_sensor_sql) if store_name.eql?SENSOR_PSQL_STORE
+    return self.memcached.set(WLC_PSQL_STORE,self.wlc_sql_store) if store_name == WLC_PSQL_STORE
+    return self.memcached.set(SENSOR_PSQL_STORE, self.store_sensor_sql) if store_name == SENSOR_PSQL_STORE
   end
 
   def is_number? string
@@ -67,7 +67,7 @@ class PostgresqlManager
 
   def enrich_client_latlong(latitude,longitude)
     location = {}
-    if latitude and longitude  and is_numeric?latitude and is_numeric?longitude
+    if latitude && longitude && is_numeric?latitude && is_numeric?longitude
       longitude_dbl = Float(Math.round(Float(longitude) * 100000) / 100000)
       latitude_dbl = Float(Math.round(Float(latitude) * 100000) / 100000)
       location["client_latlong"] = "#{latitude_dbl},#{longitude_dbl}"
@@ -89,27 +89,27 @@ class PostgresqlManager
       return 
     end
     tmpCache = Hash.new
-    key = "mac_address" if store_name.eql?WLC_PSQL_STORE
-    key = "uuid" if store_name.eql?SENSOR_PSQL_STORE
+    key = "mac_address" if store_name == WLC_PSQL_STORE
+    key = "uuid" if store_name == SENSOR_PSQL_STORE
     result.each do |rs| 
       location = {}
       location.merge!(enrich_client_latlong(rs["latitude"], rs["longitude"]))
-      location.merge!(enrich_with_column) if store_name.eql?SENSOR_PSQL_STORE
+      location.merge!(enrich_with_column) if store_name == SENSOR_PSQL_STORE
       
-      if rs[key] and !location.empty?
+      if rs[key] && !location.empty?
         tmpCache[rs[key]] = location
-        self.wlc_sql_store[rs[key]] = location if store_name.eql?WLC_PSQL_STORE
-        self.sensor_sql_store[rs[key]] = location if store_name.eql?SENSOR_PSQL_STORE
+        self.wlc_sql_store[rs[key]] = location if store_name == WLC_PSQL_STORE
+        self.sensor_sql_store[rs[key]] = location if store_name == SENSOR_PSQL_STORE
       end
     end
 
-    self.wlc_sql_store.reject!{ |k,v| !tmpCache.key?k } if store_name.eql?WLC_PSQL_STORE
-    self.store_sensor_sql.reject!{ |k,v| !tmpCache.key?k } if store_name.eql?SENSOR_PSQL_STORE
+    self.wlc_sql_store.reject!{ |k,v| !tmpCache.key?k } if store_name == WLC_PSQL_STORE
+    self.store_sensor_sql.reject!{ |k,v| !tmpCache.key?k } if store_name == SENSOR_PSQL_STORE
     save_store(store_name)         
   end
 
   def get_sql_query(store_name)
-     return "SELECT uuid, latitude, longitude FROM sensors" if store_name.eql?SENSOR_PSQL_STORE
+     return "SELECT uuid, latitude, longitude FROM sensors" if store_name == SENSOR_PSQL_STORE
      return ("SELECT DISTINCT ON (access_points.mac_address) access_points.ip_address, access_points.mac_address, access_points.enrichment," +
             " zones.name AS zone, zones.id AS zone_uuid, access_points.latitude AS latitude, access_points.longitude AS longitude, floors.name AS floor, " +
             " floors.uuid AS floor_uuid, buildings.name AS building, buildings.uuid AS building_uuid, campuses.name AS campus, campuses.uuid AS campus_uuid," +
@@ -126,6 +126,6 @@ class PostgresqlManager
             " LEFT JOIN (SELECT * FROM sensors WHERE domain_type=8) AS namespaces ON namespaces.lft <= sensors.lft AND namespaces.rgt >= sensors.rgt" +
             " LEFT JOIN (SELECT * FROM sensors WHERE domain_type=3) AS markets ON markets.lft <= sensors.lft AND markets.rgt >= sensors.rgt" +
             " LEFT JOIN (SELECT * FROM sensors WHERE domain_type=2) AS organizations ON organizations.lft <= sensors.lft AND organizations.rgt >= sensors.rgt" +
-            " LEFT JOIN (SELECT * FROM sensors WHERE domain_type=6) AS service_providers ON service_providers.lft <= sensors.lft AND service_providers.rgt >= sensors.rgt") if store_name.eql?WLC_PSQL_STORE
+            " LEFT JOIN (SELECT * FROM sensors WHERE domain_type=6) AS service_providers ON service_providers.lft <= sensors.lft AND service_providers.rgt >= sensors.rgt") if store_name == WLC_PSQL_STORE
   end # end def getSql
 end
