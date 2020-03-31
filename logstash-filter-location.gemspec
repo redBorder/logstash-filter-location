@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name = 'logstash-filter-location'
-  s.version = '1.0.4'
+  s.version = '1.0.8'
   s.licenses = ['GNU Affero General Public License']
   s.summary = "This filter classifies the ip analyzed in the event and categorizes it according to its origin."
   s.description = "This gem is a Logstash plugin required to be installed on top of the Logstash core pipeline using $LS_HOME/bin/logstash-plugin install gemname. This gem is not a stand-alone program"
@@ -21,4 +21,8 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency "logstash-core-plugin-api", "~> 2.0"
   s.add_development_dependency 'logstash-devutils'
   s.add_development_dependency 'dalli'
+  s.add_runtime_dependency 'sequel'
+  s.add_runtime_dependency 'pg_jruby', '~>0.17.1'
+  s.add_development_dependency 'jdbc-derby'
+
 end

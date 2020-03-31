@@ -1,8 +1,10 @@
 # encoding: utf-8
 require "dalli"
-Dir[File.dirname(__FILE__) + '../util/constants/*.rb'].each do |file|        
-  require_relative File.basename(file, File.extname(file))
-end
+require_relative "../util/constants/aggregators"
+require_relative "../util/constants/constants"
+require_relative "../util/constants/dimension"
+require_relative "../util/constants/dimension_value"
+require_relative "../util/constants/stores"
 
 class StoreManager
   attr_accessor :memcached
@@ -40,8 +42,7 @@ class StoreManager
         namespace = message[NAMESPACE_UUID]
 
         key = enrichment[keys.first] ? keys.first : keys.join
-        contents = store_data[key]
-        
+        contents = store_data[enrichment[key]] if enrichment[key]
         if contents
            psql_namespace = contents[NAMESPACE_UUID]
            if namespace && psql_namespace

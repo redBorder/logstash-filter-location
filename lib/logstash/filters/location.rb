@@ -7,9 +7,11 @@ require "time"
 require "dalli"
 require "yaml"
 
-Dir[File.dirname(__FILE__) + 'util/constants/*.rb'].each do |file| 
-  require_relative File.basename(file, File.extname(file))
-end
+require_relative "util/constants/aggregators"
+require_relative "util/constants/constants"
+require_relative "util/constants/dimension"
+require_relative "util/constants/dimension_value"
+require_relative "util/constants/stores"
 require_relative "util/postgresql_manager"
 require_relative "store/store_manager"
 
@@ -17,11 +19,11 @@ class LogStash::Filters::Location < LogStash::Filters::Base
 
   config_name "location"
 
-  config :database, :validate => :string, :default => "redborder", :required => false
-  config :user, :validate => :string, :default => "redborder", :required => false
-  config :pass, :validate => :string, :default => "", :required => false
-  config :port, :validate => :number, :default => "5432", :required => false
-  config :host, :validate => :path, :default => "postgresql.redborder.cluster", :required => false
+  config :database_name, :validate => :string, :default => "redborder",                    :required => false
+  config :user,          :validate => :string, :default => "redborder",                    :required => false
+  config :pass,          :validate => :string, :default => "",                             :required => false
+  config :port,          :validate => :number, :default => "5432",                         :required => false
+  config :host,          :validate => :string, :default => "postgresql.redborder.cluster", :required => false
   
   # Custom constants: 
   DATASOURCE="rb_location"
@@ -34,7 +36,7 @@ class LogStash::Filters::Location < LogStash::Filters::Base
                     NAMESPACE, SERVICE_PROVIDER, SERVICE_PROVIDER_UUID]
     @memcached = Dalli::Client.new("localhost:11211", {:expires_in => 0})
     @store = @memcached.get(LOCATION_STORE) || {}
-    @postgresql_manager = PostgresqlManager.new(@memcached,@database,@user,@pass,@port,@host)
+    @postgresql_manager = PostgresqlManager.new(@memcached, @database_name, @user, @pass, @port, @host)
     @store_manager = StoreManager.new(@memcached)
   end
 
@@ -78,9 +80,11 @@ class LogStash::Filters::Location < LogStash::Filters::Base
       
       if geo_coordinate
         latitude = Float((geo_coordinate[LOC_LATITUDEv8]) ? geo_coordinate[LOC_LATITUDEv8] : geo_coordinate[LOC_LATITUDEv9])
+        puts "latitude: #{latitude}"
         latitude = Float((latitude * 100000 ).round / 100000)
  
         longitude = Float(geo_coordinate[LOC_LONGITUDE])
+        puts "longitude #{longitude}"
         longitude = Float((longitude * 100000 ).round / 100000)
 
         locationFormat = latitude.to_s + "," + longitude.to_s
@@ -121,12 +125,13 @@ class LogStash::Filters::Location < LogStash::Filters::Base
       
       flows_number = @memcached.get(FLOWS_NUMBER)
       flows_number = Hash.new if flows_number.nil?
-      to_druid["flows_count"] = flows_number[datasource] if flows_number[datasource] 
+      store_enrichment["flows_count"] = flows_number[datasource] if flows_number[datasource] 
 
       #clean the event
       enrichmentEvent = LogStash::Event.new
       #event.to_hash.each{|k,v| event.remove(k) }
-      to_druid.each {|k,v| enrichmentEvent.set(k,v)}
+      #to_druid.each {|k,v| enrichmentEvent.set(k,v)}
+      store_enrichment.each {|k,v| enrichmentEvent.set(k,v)}
       generated_events.push(enrichmentEvent)
       return generated_events
     end
@@ -183,11 +188,11 @@ class LogStash::Filters::Location < LogStash::Filters::Base
 
         flows_number = @memcached.get(FLOWS_NUMBER)
         flows_number = Hash.new if flows_number.nil?
-        to_druid["flows_count"] = flows_number[datasource] if flows_number[datasource]
+        store_enrichment["flows_count"] = flows_number[datasource] if flows_number[datasource]
 
         #clean the event
         enrichmentEvent = LogStash::Event.new
-        to_druid.each {|k,v| enrichmentEvent.set(k,v)}
+        store_enrichment.each {|k,v| enrichmentEvent.set(k,v)}
         generated_events.push(enrichmentEvent)
       end
     end

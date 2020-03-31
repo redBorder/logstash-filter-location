@@ -1,66 +1,82 @@
 # encoding: utf-8
 require "time"
 require "dalli"
-require "pg"
+require "sequel"
+require "sequel/adapters/jdbc"
 require "yaml"
+require "pg"
 
-Dir[File.dirname(__FILE__) + './constants/*.rb'].each do |file|        
-  require_relative File.basename(file, File.extname(file))
-end
+require_relative "constants/aggregators"
+require_relative "constants/constants"
+require_relative "constants/dimension"
+require_relative "constants/dimension_value"
+require_relative "constants/stores"
 
 class PostgresqlManager
   attr_accessor :enrich_columns, :wlc_sql_store, :store_sensor_sql, 
                 :conn, :enrich_columns, :last_update, :memcached,
-                :stores_to_update
+                :stores_to_update, :database_name, :user, :password, :port, :host
 
-  def initialize(memcached, database,user,pass, port, host)
-     self.memcached = memcached
-     self.enrich_columns = ["campus", "building", "floor", "deployment",
+  def initialize(memcached, database_name, user, password, port, host)
+     @memcached = memcached
+     @enrich_columns = ["campus", "building", "floor", "deployment",
                            "namespace", "market", "organization", "service_provider", 
                            "zone", "campus_uuid", "building_uuid", "floor_uuid", 
                            "deployment_uuid", "namespace_uuid", "market_uuid", "organization_uuid", 
                            "service_provider_uuid", "zone_uuid"]
-     self.wlc_sql_store = self.memcached.get(WLC_PSQL_STORE) || {}
-     self.store_sensor_sql = self.memcached.get(SENSOR_PSQL_STORE) || {}
-     self.stores_to_update = [WLC_PSQL_STORE, SENSOR_PSQL_STORE]
-     self.database = database
-     self.user = user
-     self.password = password.empty? ? get_password_from_config_file : password
-     self.port = port
-     self.host = host
-     begin
-      self.conn = PG.connect(self.database, self.user, self.pass, self.port, self.host)
-     rescue
-       puts "DATABASE ERROR: Unable to connect to the database"
-     end
+     @wlc_sql_store = @memcached.get(WLC_PSQL_STORE) || {}
+     @sensor_sql_store = @memcached.get(SENSOR_PSQL_STORE) || {}
+     @stores_to_update = [WLC_PSQL_STORE, SENSOR_PSQL_STORE]
+     @database_name = database_name
+     @user = user
+     @password = password.empty? ? get_dbpass_from_config_file : password
+     @port = port
+     @host = host
+     @conn = setup_db
+     @last_update = Time.now
      update(true)
      #updateSalts
   end
 
-  def get_password_from_config_file
+  def setup_db
+    conninfo = "host=#{@host} port=#{@port} dbname=#{@database_name} user=#{@user} password=#{@password}"
+    begin
+      conn = PG.connect(conninfo)
+      conn.set_notice_processor do |message|
+        puts( description + ':' + message )
+      end
+    rescue => err
+      puts "%p during test setup: %s" % [ err.class, err.message ]
+      puts "Error connection database."
+      puts *err.backtrace
+    end
+    return conn
+  end
+
+  def get_dbpass_from_config_file
    pass = ""
    if File.exist?("/opt/rb/var/www/rb-rails/config/database.yml")
          production_config = YAML.load_file("/opt/rb/var/www/rb-rails/config/database.yml")      
-         pass = production_config["redborder"]["password"]
+         pass = production_config["production"]["password"]
    end
    return pass
   end
 
   def update(force = false)
-    return unless need_update? || force
-    self.wlc_sql_store = self.memcached.get(WLC_PSQL_STORE) || {}
-    self.store_sensor_sql = self.memcached.get(SENSOR_PSQL_STORE) || {}
-    self.stores_to_update.each { |store_name| update_store(store_name) }
-    self.last_update = Time.now
+    return unless force || need_update?
+    @wlc_sql_store = @memcached.get(WLC_PSQL_STORE) || {}
+    @sensor_sql_store = @memcached.get(SENSOR_PSQL_STORE) || {}
+    @stores_to_update.each { |store_name| update_store(store_name) }
+    @last_update = Time.now
   end
 
   def need_update?
-    (Time.now.to_i - self.last_update) > (5*60)
+    (Time.now - @last_update) > (5*60)
   end
 
   def save_store(store_name)
-    return self.memcached.set(WLC_PSQL_STORE,self.wlc_sql_store) if store_name == WLC_PSQL_STORE
-    return self.memcached.set(SENSOR_PSQL_STORE, self.store_sensor_sql) if store_name == SENSOR_PSQL_STORE
+    return @memcached.set(WLC_PSQL_STORE,@wlc_sql_store) if store_name == WLC_PSQL_STORE
+    return @memcached.set(SENSOR_PSQL_STORE, @sensor_sql_store) if store_name == SENSOR_PSQL_STORE
   end
 
   def string_is_number?(param)
@@ -70,22 +86,22 @@ class PostgresqlManager
   def enrich_client_latlong(latitude,longitude)
     location = {}
     if latitude && longitude && string_is_number?(latitude) && string_is_number?(longitude)
-      longitude_dbl = Float(Math.round(Float(longitude) * 100000) / 100000)
-      latitude_dbl = Float(Math.round(Float(latitude) * 100000) / 100000)
+      longitude_dbl = Float((Float(longitude) * 100000).round / 100000)
+      latitude_dbl = Float((Float(latitude) * 100000).round / 100000)
       location["client_latlong"] = "#{latitude_dbl},#{longitude_dbl}"
     end
     return location
   end
   
-  def enrich_with_columns
+  def enrich_with_columns(param)
     enriching = {}
-    self.enrich_columns.each { |column_name|  enriching[column_name] = rs[column_name] if rs[column_name] }
+    @enrich_columns.each { |column_name|  enriching[column_name] = param[column_name] if param[column_name] }
     return enriching
   end
 
   def update_store(store_name)
     begin 
-      result = self.conn.exec(get_sql_query(store_name))
+      result = @conn.exec(get_sql_query(store_name))
     rescue
       puts "SQL Exception: Error making query"
       return 
@@ -95,18 +111,17 @@ class PostgresqlManager
     key = "uuid" if store_name == SENSOR_PSQL_STORE
     result.each do |rs| 
       location = {}
+      location.merge!rs["enrichment"] if store_name == WLC_PSQL_STORE && rs["enrichment"]
       location.merge!(enrich_client_latlong(rs["latitude"], rs["longitude"]))
-      location.merge!(enrich_with_column) if store_name == SENSOR_PSQL_STORE
-      
+      location.merge!(enrich_with_columns(rs)) if store_name == WLC_PSQL_STORE
       if rs[key] && !location.empty?
         tmpCache[rs[key]] = location
-        self.wlc_sql_store[rs[key]] = location if store_name == WLC_PSQL_STORE
-        self.sensor_sql_store[rs[key]] = location if store_name == SENSOR_PSQL_STORE
+        @wlc_sql_store[rs[key]] = location if store_name == WLC_PSQL_STORE
+        @sensor_sql_store[rs[key]] = location if store_name == SENSOR_PSQL_STORE
       end
     end
-
-    self.wlc_sql_store.reject!{ |k,v| !tmpCache.key?k } if store_name == WLC_PSQL_STORE
-    self.store_sensor_sql.reject!{ |k,v| !tmpCache.key?k } if store_name == SENSOR_PSQL_STORE
+    @wlc_sql_store.reject!{ |k,v| !tmpCache.key?k } if store_name == WLC_PSQL_STORE
+    @sensor_sql_store.reject!{ |k,v| !tmpCache.key?k } if store_name == SENSOR_PSQL_STORE
     save_store(store_name)         
   end
 

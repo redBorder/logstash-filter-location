@@ -5,4 +5,5 @@ NMSP_STORE_INFO = "nmsp-info"
 RADIUS_STORE = "radius"
 DWELL_STORE = "dwell"
 COUNTER_STORE="counterStore"
-FLOWS_NUMBER="flowsNumber
+FLOWS_NUMBER="flowsNumber"
+LOCATION_STORE="location"
