@@ -1,6 +1,8 @@
 # encoding: utf-8
 require "dalli"
-require_relative "util/constants/*"
+Dir[File.dirname(__FILE__) + '../util/constants/*.rb'].each do |file|        
+  require_relative File.basename(file, File.extname(file))
+end
 
 class StoreManager
   attr_accessor :memcached

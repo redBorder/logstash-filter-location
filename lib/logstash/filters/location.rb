@@ -7,7 +7,9 @@ require "time"
 require "dalli"
 require "yaml"
 
-require_relative "util/constants/*"
+Dir[File.dirname(__FILE__) + 'util/constants/*.rb'].each do |file| 
+  require_relative File.basename(file, File.extname(file))
+end
 require_relative "util/postgresql_manager"
 require_relative "store/store_manager"
 

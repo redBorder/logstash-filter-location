@@ -4,12 +4,14 @@ require "dalli"
 require "pg"
 require "yaml"
 
-require_relative "util/constants/*"
+Dir[File.dirname(__FILE__) + './constants/*.rb'].each do |file|        
+  require_relative File.basename(file, File.extname(file))
+end
 
 class PostgresqlManager
-  attr_accessor: :enrich_columns, :wlc_sql_store, :store_sensor_sql, 
-                 :conn, :enrich_columns, :last_update, :memcached,
-                 :stores_to_update
+  attr_accessor :enrich_columns, :wlc_sql_store, :store_sensor_sql, 
+                :conn, :enrich_columns, :last_update, :memcached,
+                :stores_to_update
 
   def initialize(memcached, database,user,pass, port, host)
      self.memcached = memcached
@@ -23,7 +25,7 @@ class PostgresqlManager
      self.stores_to_update = [WLC_PSQL_STORE, SENSOR_PSQL_STORE]
      self.database = database
      self.user = user
-     self.password = password.empty? get_password_from_config_file : password
+     self.password = password.empty? ? get_password_from_config_file : password
      self.port = port
      self.host = host
      begin
@@ -61,13 +63,13 @@ class PostgresqlManager
     return self.memcached.set(SENSOR_PSQL_STORE, self.store_sensor_sql) if store_name == SENSOR_PSQL_STORE
   end
 
-  def is_number? string
-    true if Float(string) rescue false
+  def string_is_number?(param)
+    true if Float(param) rescue false
   end
 
   def enrich_client_latlong(latitude,longitude)
     location = {}
-    if latitude && longitude && is_numeric?latitude && is_numeric?longitude
+    if latitude && longitude && string_is_number?(latitude) && string_is_number?(longitude)
       longitude_dbl = Float(Math.round(Float(longitude) * 100000) / 100000)
       latitude_dbl = Float(Math.round(Float(latitude) * 100000) / 100000)
       location["client_latlong"] = "#{latitude_dbl},#{longitude_dbl}"
