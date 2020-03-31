@@ -1,8 +1,6 @@
 # encoding: utf-8
 require "time"
 require "dalli"
-require "sequel"
-require "sequel/adapters/jdbc"
 require "yaml"
 require "pg"
 
@@ -32,13 +30,13 @@ class PostgresqlManager
      @password = password.empty? ? get_dbpass_from_config_file : password
      @port = port
      @host = host
-     @conn = setup_db
+     @conn = nil
      @last_update = Time.now
      update(true)
      #updateSalts
   end
 
-  def setup_db
+  def open_db
     conninfo = "host=#{@host} port=#{@port} dbname=#{@database_name} user=#{@user} password=#{@password}"
     begin
       conn = PG.connect(conninfo)
@@ -64,10 +62,12 @@ class PostgresqlManager
 
   def update(force = false)
     return unless force || need_update?
+    @conn = open_db 
     @wlc_sql_store = @memcached.get(WLC_PSQL_STORE) || {}
     @sensor_sql_store = @memcached.get(SENSOR_PSQL_STORE) || {}
     @stores_to_update.each { |store_name| update_store(store_name) }
     @last_update = Time.now
+    @conn.finish if @conn
   end
 
   def need_update?
@@ -86,9 +86,9 @@ class PostgresqlManager
   def enrich_client_latlong(latitude,longitude)
     location = {}
     if latitude && longitude && string_is_number?(latitude) && string_is_number?(longitude)
-      longitude_dbl = Float((Float(longitude) * 100000).round / 100000)
-      latitude_dbl = Float((Float(latitude) * 100000).round / 100000)
-      location["client_latlong"] = "#{latitude_dbl},#{longitude_dbl}"
+      longitude_dbl = Float((Float(longitude) * 100000) / 100000)
+      latitude_dbl = Float((Float(latitude) * 100000) / 100000)
+      location["client_latlong"] = "%.6f," % latitude_dbl + "%.6f" % longitude_dbl
     end
     return location
   end

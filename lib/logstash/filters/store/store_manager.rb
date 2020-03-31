@@ -10,7 +10,7 @@ class StoreManager
   attr_accessor :memcached
 
   def initialize(memcached)
-    self.memcached = memcached
+    @memcached = memcached
   end 
   def get_store_keys(store_name)
     return ["wireless_station"] if store_name == WLC_PSQL_STORE
@@ -24,7 +24,7 @@ class StoreManager
   end
 
   def get_store(store_name)
-    self.memcached.get(store_name) || {}
+    @memcached.get(store_name) || {}
   end
 
   def enrich(message)
