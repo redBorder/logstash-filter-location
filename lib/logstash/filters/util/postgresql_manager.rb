@@ -68,7 +68,7 @@ class PostgresqlManager
   def enrich_client_latlong(latitude,longitude)
     location = {}
     if latitude and longitude  and is_numeric?latitude and is_numeric?longitude
-      longitude_dbl = Float(Math.round(Float(longigude) * 100000) / 100000)
+      longitude_dbl = Float(Math.round(Float(longitude) * 100000) / 100000)
       latitude_dbl = Float(Math.round(Float(latitude) * 100000) / 100000)
       location["client_latlong"] = "#{latitude_dbl},#{longitude_dbl}"
     end
@@ -83,7 +83,7 @@ class PostgresqlManager
 
   def update_store(store_name)
     begin 
-      result = self.conn.exec(getSqlQuery(store_name))
+      result = self.conn.exec(get_sql_query(store_name))
     rescue
       puts "SQL Exception: Error making query"
       return 
@@ -98,8 +98,8 @@ class PostgresqlManager
       
       if rs[key] and !location.empty?
         tmpCache[rs[key]] = location
-        self.storeWLCSq[rs[key]] = location if store_name.eql?WLC_PSQL_STORE
-        self.storeSql[rs[key]] = location if store_name.eql?SENSOR_PSQL_STORE
+        self.wlc_sql_store[rs[key]] = location if store_name.eql?WLC_PSQL_STORE
+        self.sensor_sql_store[rs[key]] = location if store_name.eql?SENSOR_PSQL_STORE
       end
     end
 
@@ -108,14 +108,14 @@ class PostgresqlManager
     save_store(store_name)         
   end
 
-  def getSqlQuery(store_name)
+  def get_sql_query(store_name)
      return "SELECT uuid, latitude, longitude FROM sensors" if store_name.eql?SENSOR_PSQL_STORE
      return ("SELECT DISTINCT ON (access_points.mac_address) access_points.ip_address, access_points.mac_address, access_points.enrichment," +
             " zones.name AS zone, zones.id AS zone_uuid, access_points.latitude AS latitude, access_points.longitude AS longitude, floors.name AS floor, " +
             " floors.uuid AS floor_uuid, buildings.name AS building, buildings.uuid AS building_uuid, campuses.name AS campus, campuses.uuid AS campus_uuid," +
             " deployments.name AS deployment, deployments.uuid AS deployment_uuid, namespaces.name AS namespace, namespaces.uuid AS namespace_uuid," +
             " markets.name AS market, markets.uuid AS market_uuid, organizations.name AS organization, organizations.uuid AS organization_uuid," +
-            _PSQL_STORE
+            " service_providers.name AS service_provider, service_providers.uuid AS service_provider_uuid" +
             " FROM access_points JOIN sensors ON (access_points.sensor_id = sensors.id)" +
             " LEFT JOIN access_points_zones AS zones_ids ON access_points.id = zones_ids.access_point_id" +
             " LEFT JOIN zones ON zones_ids.zone_id = zones.id" +
