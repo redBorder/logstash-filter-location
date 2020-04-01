@@ -93,7 +93,7 @@ class LogStash::Filters::Location < LogStash::Filters::Base
       to_druid[CLIENT_RSSI] = to_druid[CLIENT_SNR] = "unknown"
       to_druid[NAMESPACE_UUID] = namespace_id unless namespace_id.empty? 
       to_druid[TYPE] = "mse" 
-      to_druid[TIMESTAMP] = (date_string) ? (Time.parse(date_string).to_i / 1000) : (Time.now.to_i / 1000)
+      to_druid[TIMESTAMP] = (date_string) ? (Time.parse(date_string).to_i) : (Time.now.to_i)
 
       if mac_address
         @store[mac_address + namespace_id] = to_cache
@@ -143,7 +143,7 @@ class LogStash::Filters::Location < LogStash::Filters::Base
         
         to_druid[SENSOR_NAME] = msg[LOC_SUBSCRIPTION_NAME]
         to_druid[CLIENT_MAC] = client_mac
-        to_druid[TIMESTAMP] = msg[TIMESTAMP].to_i / 1000
+        to_druid[TIMESTAMP] = msg[TIMESTAMP].to_i 
         to_druid[TYPE] = "mse10-association"
         to_druid[LOC_SUBSCRIPTION_NAME] = msg[LOC_SUBSCRIPTION_NAME]
         
@@ -205,9 +205,9 @@ class LogStash::Filters::Location < LogStash::Filters::Base
       to_druid[LOC_SUBSCRIPTION_NAME] = msg[LOC_SUBSCRIPTION_NAME]
       
       if msg.key?TIMESTAMP
-        to_druid[TIMESTAMP] = msg[TIMESTAMP].to_i / 1000
+        to_druid[TIMESTAMP] = msg[TIMESTAMP].to_i 
       else
-        to_druid[TIMESTAMP] = Time.now.ti_i / 1000
+        to_druid[TIMESTAMP] = Time.now.to_i 
       end
 
       to_druid[CLIENT_MAC] = client_mac
