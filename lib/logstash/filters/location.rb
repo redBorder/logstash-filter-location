@@ -13,17 +13,19 @@ require_relative "util/constants/dimension"
 require_relative "util/constants/dimension_value"
 require_relative "util/constants/stores"
 require_relative "util/postgresql_manager"
+require_relative "util/memcached_config"
 require_relative "store/store_manager"
 
 class LogStash::Filters::Location < LogStash::Filters::Base
 
   config_name "location"
 
-  config :database_name, :validate => :string, :default => "redborder",                    :required => false
-  config :user,          :validate => :string, :default => "redborder",                    :required => false
-  config :password,      :validate => :string, :default => "",                             :required => false
-  config :port,          :validate => :number, :default => "5432",                         :required => false
-  config :host,          :validate => :string, :default => "postgresql.redborder.cluster", :required => false
+  config :database_name,             :validate => :string, :default => "redborder",                    :required => false
+  config :user,                      :validate => :string, :default => "redborder",                    :required => false
+  config :password,                  :validate => :string, :default => "",                             :required => false
+  config :port,                      :validate => :number, :default => "5432",                         :required => false
+  config :host,                      :validate => :string, :default => "postgresql.redborder.cluster", :required => false
+  config :memcached_server,          :validate => :string, :default => "",                             :required => false
   
   # Custom constants: 
   DATASOURCE="rb_location"
@@ -34,7 +36,8 @@ class LogStash::Filters::Location < LogStash::Filters::Base
     @dim_to_druid = [MARKET, MARKET_UUID, ORGANIZATION, ORGANIZATION_UUID,
                     DEPLOYMENT, DEPLOYMENT_UUID, SENSOR_NAME, SENSOR_UUID, 
                     NAMESPACE, SERVICE_PROVIDER, SERVICE_PROVIDER_UUID]
-    @memcached = Dalli::Client.new("localhost:11211", {:expires_in => 0})
+    @memcached_server = MemcachedConfig::servers.first if @memcached_server.empty?
+    @memcached = Dalli::Client.new(@memcached_server, {:expires_in => 0})
     @store = @memcached.get(LOCATION_STORE) || {}
     @postgresql_manager = PostgresqlManager.new(@memcached, @database_name, @user, @password, @port, @host)
     @store_manager = StoreManager.new(@memcached)
