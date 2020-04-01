@@ -95,6 +95,10 @@ class PostgresqlManager
   
   def enrich_with_columns(param)
     enriching = {}
+    puts " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
+    puts "campus_uuid aqui es :"
+    puts param["campus_uuid"]
+    puts " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
     @enrich_columns.each { |column_name|  enriching[column_name] = param[column_name] if param[column_name] }
     return enriching
   end

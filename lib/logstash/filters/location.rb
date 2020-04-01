@@ -107,6 +107,8 @@ class LogStash::Filters::Location < LogStash::Filters::Base
 
       store_enrichment = @store_manager.enrich(to_druid)
        
+      puts "Aqui la dimension campus_uuid es: #{store_enrichment[CAMPUS_UUID]}" if store_enrichment[CAMPUS_UUID]
+
       namespace = store_enrichment[NAMESPACE_UUID]
       datasource = (namespace) ? DATASOURCE + "_" + namespace : DATASOURCE
 
