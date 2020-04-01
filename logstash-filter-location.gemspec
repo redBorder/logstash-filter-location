@@ -1,8 +1,8 @@
 Gem::Specification.new do |s|
   s.name = 'logstash-filter-location'
-  s.version = '1.0.9'
+  s.version = '1.0.10'
   s.licenses = ['GNU Affero General Public License']
-  s.summary = "This filter classifies the ip analyzed in the event and categorizes it according to its origin."
+  s.summary = "This filter parse information coming from Cisco MSEv8 MSEv9 and MSEv10."
   s.description = "This gem is a Logstash plugin required to be installed on top of the Logstash core pipeline using $LS_HOME/bin/logstash-plugin install gemname. This gem is not a stand-alone program"
   s.authors = ["redBorder"]
   s.email = 'systems@redborder.com'

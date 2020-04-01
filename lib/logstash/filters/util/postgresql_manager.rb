@@ -3,6 +3,7 @@ require "time"
 require "dalli"
 require "yaml"
 require "pg"
+require "logstash/util/loggable"
 
 require_relative "constants/aggregators"
 require_relative "constants/constants"
@@ -14,6 +15,8 @@ class PostgresqlManager
   attr_accessor :enrich_columns, :wlc_sql_store, :store_sensor_sql, 
                 :conn, :enrich_columns, :last_update, :memcached,
                 :stores_to_update, :database_name, :user, :password, :port, :host
+
+  include LogStash::Util::Loggable
 
   def initialize(memcached, database_name, user, password, port, host)
      @memcached = memcached
@@ -41,12 +44,12 @@ class PostgresqlManager
     begin
       conn = PG.connect(conninfo)
       conn.set_notice_processor do |message|
-        puts( description + ':' + message )
+        logger.debug? && logger.debug(( description + ':' + message ))
       end
     rescue => err
-      puts "%p during test setup: %s" % [ err.class, err.message ]
-      puts "Error connection database."
-      puts *err.backtrace
+      logger.error("%p during test setup: %s" % [ err.class, err.message ])
+      logger.error("Error connection database.")
+      logger.error(*err.backtrace)
     end
     return conn
   end
@@ -95,10 +98,6 @@ class PostgresqlManager
   
   def enrich_with_columns(param)
     enriching = {}
-    puts " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
-    puts "campus_uuid aqui es :"
-    puts param["campus_uuid"]
-    puts " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
     @enrich_columns.each { |column_name|  enriching[column_name] = param[column_name] if param[column_name] }
     return enriching
   end
@@ -107,7 +106,7 @@ class PostgresqlManager
     begin 
       result = @conn.exec(get_sql_query(store_name))
     rescue
-      puts "SQL Exception: Error making query"
+      logger.error("SQL Exception: Error making query")
       return 
     end
     tmpCache = Hash.new

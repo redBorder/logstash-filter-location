@@ -107,8 +107,6 @@ class LogStash::Filters::Location < LogStash::Filters::Base
 
       store_enrichment = @store_manager.enrich(to_druid)
        
-      puts "Aqui la dimension campus_uuid es: #{store_enrichment[CAMPUS_UUID]}" if store_enrichment[CAMPUS_UUID]
-
       namespace = store_enrichment[NAMESPACE_UUID]
       datasource = (namespace) ? DATASOURCE + "_" + namespace : DATASOURCE
 
@@ -255,7 +253,7 @@ class LogStash::Filters::Location < LogStash::Filters::Base
         elsif notification_type == "locationupdate"
           generated_events = process_location_update(event)
         else
-          puts "MSE version 10 notificationType is unknown"
+          @logger.debug? && @logger.debug("MSE version 10 notificationType is unknown")
         end
       end
     end
@@ -270,7 +268,7 @@ class LogStash::Filters::Location < LogStash::Filters::Base
     elsif (event.get(LOC_NOTIFICATIONS))
       generated_events = locv10(event)
     else
-      puts "WARN: Unknow location message: {#{event}}"
+      @logger.warn("WARN: Unknow location message: {#{event}}")
     end
 
     generated_events.each do |e|
