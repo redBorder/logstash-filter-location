@@ -5,13 +5,10 @@ require "yaml"
 require "pg"
 require "logstash/util/loggable"
 
-require_relative "constants/aggregators"
-require_relative "constants/constants"
-require_relative "constants/dimension"
-require_relative "constants/dimension_value"
-require_relative "constants/stores"
+require_relative "location_constant"
 
 class PostgresqlManager
+  include LocationConstant
   attr_accessor :enrich_columns, :wlc_sql_store, :store_sensor_sql, 
                 :conn, :enrich_columns, :last_update, :memcached,
                 :stores_to_update, :database_name, :user, :password, :port, :host

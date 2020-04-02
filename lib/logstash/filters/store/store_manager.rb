@@ -1,12 +1,10 @@
 # encoding: utf-8
 require "dalli"
-require_relative "../util/constants/aggregators"
-require_relative "../util/constants/constants"
-require_relative "../util/constants/dimension"
-require_relative "../util/constants/dimension_value"
-require_relative "../util/constants/stores"
+require_relative "../util/location_constant"
 
 class StoreManager
+  include LocationConstant
+
   attr_accessor :memcached
 
   def initialize(memcached)

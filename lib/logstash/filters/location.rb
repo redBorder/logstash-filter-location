@@ -7,17 +7,13 @@ require "time"
 require "dalli"
 require "yaml"
 
-require_relative "util/constants/aggregators"
-require_relative "util/constants/constants"
-require_relative "util/constants/dimension"
-require_relative "util/constants/dimension_value"
-require_relative "util/constants/stores"
+require_relative "util/location_constant"
 require_relative "util/postgresql_manager"
 require_relative "util/memcached_config"
 require_relative "store/store_manager"
 
 class LogStash::Filters::Location < LogStash::Filters::Base
-
+  include LocationConstant
   config_name "location"
 
   config :database_name,             :validate => :string, :default => "redborder",                    :required => false
