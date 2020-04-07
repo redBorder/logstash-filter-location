@@ -8,7 +8,6 @@ require "dalli"
 require "yaml"
 
 require_relative "util/location_constant"
-require_relative "util/postgresql_manager"
 require_relative "util/memcached_config"
 require_relative "store/store_manager"
 
@@ -16,12 +15,7 @@ class LogStash::Filters::Location < LogStash::Filters::Base
   include LocationConstant
   config_name "location"
 
-  config :database_name,             :validate => :string, :default => "redborder",                    :required => false
-  config :user,                      :validate => :string, :default => "redborder",                    :required => false
-  config :password,                  :validate => :string, :default => "",                             :required => false
-  config :port,                      :validate => :number, :default => "5432",                         :required => false
-  config :host,                      :validate => :string, :default => "postgresql.redborder.cluster", :required => false
-  config :memcached_server,          :validate => :string, :default => "",                             :required => false
+  config :memcached_server,  :validate => :string, :default => "",  :required => false
   
   # Custom constants: 
   DATASOURCE="rb_location"
@@ -33,10 +27,10 @@ class LogStash::Filters::Location < LogStash::Filters::Base
                     DEPLOYMENT, DEPLOYMENT_UUID, SENSOR_NAME, SENSOR_UUID, 
                     NAMESPACE, SERVICE_PROVIDER, SERVICE_PROVIDER_UUID]
     @memcached_server = MemcachedConfig::servers.first if @memcached_server.empty?
-    @memcached = Dalli::Client.new(@memcached_server, {:expires_in => 0})
+    @memcached = Dalli::Client.new(@memcached_server, {:expires_in => 0, :value_max_bytes => 4000000})
     @store = @memcached.get(LOCATION_STORE) || {}
-    @postgresql_manager = PostgresqlManager.new(@memcached, @database_name, @user, @password, @port, @host)
     @store_manager = StoreManager.new(@memcached)
+    @last_refresh_stores = nil
   end
 
   def locv89(event)
@@ -256,8 +250,16 @@ class LogStash::Filters::Location < LogStash::Filters::Base
     return generated_events
   end
 
+  def refresh_stores
+   return nil unless @last_refresh_stores.nil? || ((Time.now - @last_refresh_stores) > (60 * 5))
+   @last_refresh_stores = Time.now
+   e = LogStash::Event.new
+   e.set("refresh_stores",true)
+   return e
+  end
+
   def filter(event)
-    @postgresql_manager.update
+    #@postgresql_manager.update
     generated_events = []
     if (event.get(LOC_STREAMING_NOTIFICATION))
       generated_events = locv89(event)
@@ -266,10 +268,11 @@ class LogStash::Filters::Location < LogStash::Filters::Base
     else
       @logger.warn("WARN: Unknow location message: {#{event}}")
     end
-
     generated_events.each do |e|
       yield e
     end
+    event_refresh = refresh_stores
+    yield event_refresh if event_refresh
     event.cancel
   end  # def filter
 end    # class Logstash::Filter::Location
