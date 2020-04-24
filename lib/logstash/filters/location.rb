@@ -212,11 +212,11 @@ class LogStash::Filters::Location < LogStash::Filters::Base
       
       @store[client_mac + namespace_id] = to_cache
       store_enrichment = @store_manager.enrich(to_druid)
+
       datasource = DATASOURCE
       namespace = store_enrichment[NAMESPACE_UUID]
-      datasource = (namespace) ? DATASOURCE + "_" + namespace : DATASOURCE
+      datasource = (namespace) ? DATASOURCE + "_" + namespace : DATASOURCE if (namespace && !namespace.empty?)
       
-      counter_store = @memcached.get(COUNTER_STORE) || {}
       counter_store[datasource] = counter_store[datasource].nil? ? 0 : (counter_store[datasource] + 1)
       @memcached.set(COUNTER_STORE,counter_store)
       
