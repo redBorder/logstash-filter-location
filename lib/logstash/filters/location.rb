@@ -30,7 +30,6 @@ class LogStash::Filters::Location < LogStash::Filters::Base
     @memcached = Dalli::Client.new(@memcached_server, {:expires_in => 0, :value_max_bytes => 4000000})
     @store = @memcached.get(LOCATION_STORE) || {}
     @store_manager = StoreManager.new(@memcached)
-    @last_refresh_stores = nil
   end
 
   def locv89(event)
@@ -250,14 +249,6 @@ class LogStash::Filters::Location < LogStash::Filters::Base
     return generated_events
   end
 
-  def refresh_stores
-   return nil unless @last_refresh_stores.nil? || ((Time.now - @last_refresh_stores) > (60 * 5))
-   @last_refresh_stores = Time.now
-   e = LogStash::Event.new
-   e.set("refresh_stores",true)
-   return e
-  end
-
   def filter(event)
     #@postgresql_manager.update
     generated_events = []
@@ -271,8 +262,6 @@ class LogStash::Filters::Location < LogStash::Filters::Base
     generated_events.each do |e|
       yield e
     end
-    event_refresh = refresh_stores
-    yield event_refresh if event_refresh
     event.cancel
   end  # def filter
 end    # class Logstash::Filter::Location
