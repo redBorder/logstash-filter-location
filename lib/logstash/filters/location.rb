@@ -26,7 +26,7 @@ class LogStash::Filters::Location < LogStash::Filters::Base
     @dim_to_druid = [MARKET, MARKET_UUID, ORGANIZATION, ORGANIZATION_UUID,
                     DEPLOYMENT, DEPLOYMENT_UUID, SENSOR_NAME, SENSOR_UUID, 
                     NAMESPACE, SERVICE_PROVIDER, SERVICE_PROVIDER_UUID]
-    @memcached_server = MemcachedConfig::servers.first if @memcached_server.empty?
+    @memcached_server = MemcachedConfig::servers if @memcached_server.empty?
     @memcached = Dalli::Client.new(@memcached_server, {:expires_in => 0, :value_max_bytes => 4000000})
     @store = @memcached.get(LOCATION_STORE) || {}
     @store_manager = StoreManager.new(@memcached)
