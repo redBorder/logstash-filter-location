@@ -33,6 +33,7 @@ class LogStash::Filters::Location < LogStash::Filters::Base
   end
 
   def locv89(event)
+    @store = @memcached.get(LOCATION_STORE) || {}
     generated_events = []
     namespace_id = event.get(NAMESPACE_UUID) || ""
     mse_event_content = event.get(LOC_STREAMING_NOTIFICATION)
@@ -232,6 +233,7 @@ class LogStash::Filters::Location < LogStash::Filters::Base
   end
 
   def locv10(event)
+    @store = @memcached.get(LOCATION_STORE) || {}
     generated_events = []
     notifications = event.get(LOC_NOTIFICATIONS)
     if notifications
