@@ -16,6 +16,9 @@ class LogStash::Filters::Location < LogStash::Filters::Base
   config_name "location"
 
   config :memcached_server,  :validate => :string, :default => "",  :required => false
+  config :counter_store_counter, :validate => :boolean, :default => false,   :required => false
+  config :flow_counter,          :validate => :boolean, :default => false,   :required => false
+  config :update_stores_rate,    :validate => :number,  :default => 60,      :required => false
   
   # Custom constants: 
   DATASOURCE="rb_location"
@@ -29,7 +32,7 @@ class LogStash::Filters::Location < LogStash::Filters::Base
     @memcached_server = MemcachedConfig::servers if @memcached_server.empty?
     @memcached = Dalli::Client.new(@memcached_server, {:expires_in => 0, :value_max_bytes => 4000000})
     @store = @memcached.get(LOCATION_STORE) || {}
-    @store_manager = StoreManager.new(@memcached)
+    @store_manager = StoreManager.new(@memcached, @update_stores_rate)
   end
 
   def locv89(event)
@@ -156,20 +159,24 @@ class LogStash::Filters::Location < LogStash::Filters::Base
        
         store_enrichment = @store_manager.enrich(to_druid)
  
-        namespace = store_enrichment[NAMESPACE_UUID]
-        datasource = (namespace) ? DATASOURCE + "_" + namespace : DATASOURCE
-
-        counter_store = @memcached.get(COUNTER_STORE) || {}
-        counter_store[datasource] = counter_store[datasource].nil? ? 0 : (counter_store[datasource] + 1)
-        @memcached.set(COUNTER_STORE,counter_store)
-
-        flows_number = @memcached.get(FLOWS_NUMBER) || {}
-        store_enrichment["flows_count"] = flows_number[datasource] if flows_number[datasource]
+        if @counter_store_counter or @flow_counter
+          datasource = store_enrichment[NAMESPACE_UUID] ? DATASOURCE + "_" + store_enrichment[NAMESPACE_UUID] :       DATASOURCE
+ 
+          if @counter_store_counter
+            counter_store = @memcached.get(COUNTER_STORE) || {}
+            counter = counter_store[datasource] || 0
+            counter_store[datasource] = counter + splitted_msg.size
+            @memcached.set(COUNTER_STORE,counter_store)
+          end
+ 
+          if @flow_counter
+            flows_number = @memcached.get(FLOWS_NUMBER) || {}
+            store_enrichment["flows_count"] = (flows_number[datasource] || 0)
+          end
+        end
 
         #clean the event
-        enrichment_event = LogStash::Event.new
-        store_enrichment.each {|k,v| enrichment_event.set(k,v)}
-        generated_events.push(enrichment_event)
+        generated_events.push(LogStash::Event.new(store_enrichment))
       end
     end
     return generated_events
@@ -213,20 +220,24 @@ class LogStash::Filters::Location < LogStash::Filters::Base
       @store[client_mac + namespace_id] = to_cache
       store_enrichment = @store_manager.enrich(to_druid)
 
-      datasource = DATASOURCE
-      namespace = store_enrichment[NAMESPACE_UUID]
-      datasource = (namespace) ? DATASOURCE + "_" + namespace : DATASOURCE if (namespace && !namespace.empty?)
-      
-      counter_store[datasource] = counter_store[datasource].nil? ? 0 : (counter_store[datasource] + 1)
-      @memcached.set(COUNTER_STORE,counter_store)
-      
-      flows_number = @memcached.get(FLOWS_NUMBER) || {}
-      store_enrichment["flows_count"] = flows_number[datasource] if flows_number[datasource] 
+      if @counter_store_counter or @flow_counter
+        datasource = store_enrichment[NAMESPACE_UUID] ? DATASOURCE + "_" + store_enrichment[NAMESPACE_UUID] :       DATASOURCE
+
+        if @counter_store_counter
+         counter_store = @memcached.get(COUNTER_STORE) || {}
+         counter = counter_store[datasource] || 0
+         counter_store[datasource] = counter + splitted_msg.size
+         @memcached.set(COUNTER_STORE,counter_store)
+        end
+
+        if @flow_counter
+         flows_number = @memcached.get(FLOWS_NUMBER) || {}
+         store_enrichment["flows_count"] = (flows_number[datasource] || 0)
+        end
+      end
 
       #clean the event
-      enrichment_event = LogStash::Event.new
-      store_enrichment.each {|k,v| enrichment_event.set(k,v)}
-      generated_events.push(enrichment_event)
+      generated_events.push(LogStash::Event.new(store_enrichment))
     end
   
     return generated_events
