@@ -31,12 +31,29 @@ class LogStash::Filters::Location < LogStash::Filters::Base
                     NAMESPACE, SERVICE_PROVIDER, SERVICE_PROVIDER_UUID]
     @memcached_server = MemcachedConfig::servers if @memcached_server.empty?
     @memcached = Dalli::Client.new(@memcached_server, {:expires_in => 0, :value_max_bytes => 4000000})
-    @store = @memcached.get(LOCATION_STORE) || {}
+    #@store = @memcached.get(LOCATION_STORE) || {}
+    @stores = {}
     @store_manager = StoreManager.new(@memcached, @update_stores_rate)
+  end
+   
+  # Get all the stores of location
+  # and store it on @stores
+  def stores_from_memcache
+    @stores = @memcached.get_multi(LOCATION_STORE,"#{LOCATION_STORE}-historical") || {}
+  end
+
+  def find_data_from_stores(key)
+    data = nil
+    @stores.values.each do |store|
+      data = store[key]
+      break if data
+    end
+    data
   end
 
   def locv89(event)
-    @store = @memcached.get(LOCATION_STORE) || {}
+    #@store = @memcached.get(LOCATION_STORE) || {}
+    @store = stores_from_memcache[LOCATION_STORE] || {}
     generated_events = []
     namespace_id = event.get(NAMESPACE_UUID) || ""
     mse_event_content = event.get(LOC_STREAMING_NOTIFICATION)
@@ -197,7 +214,8 @@ class LogStash::Filters::Location < LogStash::Filters::Base
       
       to_cache[CAMPUS],to_cache[BUILDING],to_cache[FLOOR], to_cache[ZONE] = location_map_hierarchy.split(">") if location_map_hierarchy
       
-      assoc_cache = @store[client_mac + namespace_id]
+      #assoc_cache = @store[client_mac + namespace_id]
+      assoc_cache = find_data_from_stores(client_mac + namespace_id)
       assoc_cache ? to_cache.merge!(assoc_cache) : to_cache[DOT11STATUS] = "PROBING"
 
       to_druid.merge!(to_cache)
@@ -244,7 +262,8 @@ class LogStash::Filters::Location < LogStash::Filters::Base
   end
 
   def locv10(event)
-    @store = @memcached.get(LOCATION_STORE) || {}
+    #@store = @memcached.get(LOCATION_STORE) || {}
+    @store = stores_from_memcache[LOCATION_STORE] || {}
     generated_events = []
     notifications = event.get(LOC_NOTIFICATIONS)
     if notifications
