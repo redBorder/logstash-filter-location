@@ -120,12 +120,16 @@ class LogStash::Filters::Location < LogStash::Filters::Base
       namespace = store_enrichment[NAMESPACE_UUID]
       datasource = (namespace) ? DATASOURCE + "_" + namespace : DATASOURCE
 
-      counter_store = @memcached.get(COUNTER_STORE) || {}
-      counter_store[datasource] = counter_store[datasource].nil? ? 0 : (counter_store[datasource] + 1)
-      @memcached.set(COUNTER_STORE,counter_store)
+      if @counter_store_counter
+        counter_store = @memcached.get(COUNTER_STORE) || {}
+        counter_store[datasource] = counter_store[datasource].nil? ? 0 : (counter_store[datasource] + 1)
+        @memcached.set(COUNTER_STORE,counter_store)
+      end
       
-      flows_number = @memcached.get(FLOWS_NUMBER) || {}
-      store_enrichment["flows_count"] = flows_number[datasource] if flows_number[datasource] 
+      if @flow_counter
+        flows_number = @memcached.get(FLOWS_NUMBER) || {}
+        store_enrichment["flows_count"] = flows_number[datasource] if flows_number[datasource] 
+      end
 
       #clean the event
       enrichment_event = LogStash::Event.new
