@@ -74,11 +74,11 @@ class LogStash::Filters::Location < LogStash::Filters::Base
         state = String(location[LOC_DOT11STATUS])
         
         to_druid[DOT11STATUS] = to_cache[DOT11STATUS] = state if state
-
+        to_cache[WIRELESS_STATION] = location[LOC_AP_MACADDR] if location[LOC_AP_MACADDR]
         if state && state == LOC_ASSOCIATED
           ip = location[LOC_IPADDR].to_a
           to_cache[WIRELESS_ID]      = location[LOC_SSID]       if location[LOC_SSID]
-          to_cache[WIRELESS_STATION] = location[LOC_AP_MACADDR] if location[LOC_AP_MACADDR]
+          #to_cache[WIRELESS_STATION] = location[LOC_AP_MACADDR] if location[LOC_AP_MACADDR]
           to_druid[LAN_IP] = ip.first if ip && ip.first
         end
       end
